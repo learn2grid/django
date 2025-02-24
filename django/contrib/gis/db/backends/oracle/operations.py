@@ -7,6 +7,7 @@
  support for an internal JVM, and Java libraries are required to use
  the WKT constructors.
 """
+
 import re
 
 from django.contrib.gis.db import models
@@ -128,6 +129,7 @@ class OracleOperations(BaseSpatialOperations, DatabaseOperations):
         "LineLocatePoint",
         "MakeValid",
         "MemSize",
+        "Rotate",
         "Scale",
         "SnapToGrid",
         "Translate",

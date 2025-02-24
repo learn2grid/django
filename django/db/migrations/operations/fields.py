@@ -1,8 +1,9 @@
 from django.db.migrations.utils import field_references
 from django.db.models import NOT_PROVIDED
+from django.utils.copy import replace
 from django.utils.functional import cached_property
 
-from .base import Operation
+from .base import Operation, OperationCategory
 
 
 class FieldOperation(Operation):
@@ -75,6 +76,8 @@ class FieldOperation(Operation):
 class AddField(FieldOperation):
     """Add a field to a model."""
 
+    category = OperationCategory.ADDITION
+
     def __init__(self, model_name, name, field, preserve_default=True):
         self.preserve_default = preserve_default
         super().__init__(model_name, name, field)
@@ -132,8 +135,8 @@ class AddField(FieldOperation):
         ):
             if isinstance(operation, AlterField):
                 return [
-                    AddField(
-                        model_name=self.model_name,
+                    replace(
+                        self,
                         name=operation.name,
                         field=operation.field,
                     ),
@@ -141,18 +144,14 @@ class AddField(FieldOperation):
             elif isinstance(operation, RemoveField):
                 return []
             elif isinstance(operation, RenameField):
-                return [
-                    AddField(
-                        model_name=self.model_name,
-                        name=operation.new_name,
-                        field=self.field,
-                    ),
-                ]
+                return [replace(self, name=operation.new_name)]
         return super().reduce(operation, app_label)
 
 
 class RemoveField(FieldOperation):
     """Remove a field from a model."""
+
+    category = OperationCategory.REMOVAL
 
     def deconstruct(self):
         kwargs = {
@@ -200,6 +199,8 @@ class AlterField(FieldOperation):
     Alter a field's database column (e.g. null, max_length) to the provided
     new field.
     """
+
+    category = OperationCategory.ALTERATION
 
     def __init__(self, model_name, name, field, preserve_default=True):
         self.preserve_default = preserve_default
@@ -258,17 +259,15 @@ class AlterField(FieldOperation):
         ):
             return [
                 operation,
-                AlterField(
-                    model_name=self.model_name,
-                    name=operation.new_name,
-                    field=self.field,
-                ),
+                replace(self, name=operation.new_name),
             ]
         return super().reduce(operation, app_label)
 
 
 class RenameField(FieldOperation):
     """Rename a field on the model. Might affect db_column too."""
+
+    category = OperationCategory.ALTERATION
 
     def __init__(self, model_name, old_name, new_name):
         self.old_name = old_name
@@ -342,13 +341,7 @@ class RenameField(FieldOperation):
             and self.is_same_model_operation(operation)
             and self.new_name_lower == operation.old_name_lower
         ):
-            return [
-                RenameField(
-                    self.model_name,
-                    self.old_name,
-                    operation.new_name,
-                ),
-            ]
+            return [replace(self, new_name=operation.new_name)]
         # Skip `FieldOperation.reduce` as we want to run `references_field`
         # against self.old_name and self.new_name.
         return super(FieldOperation, self).reduce(operation, app_label) or not (
