@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from django.core import serializers
 from django.db import connection
 from django.db.models import F, Max, Min
+from django.db.models.functions import Now
 from django.http import HttpRequest
 from django.template import (
     Context,
@@ -64,7 +65,7 @@ except ImportError:
 # datetime.datetime(2011, 9, 1, 13, 20, 30), which translates to
 # 10:20:30 in UTC and 17:20:30 in ICT.
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 EAT = timezone.get_fixed_timezone(180)  # Africa/Nairobi
 ICT = timezone.get_fixed_timezone(420)  # Asia/Bangkok
 
@@ -326,6 +327,13 @@ class NewDatabaseTests(TestCase):
             Event.objects.create(dt=dt)
         event = Event.objects.get()
         self.assertEqual(event.dt, datetime.datetime(2011, 9, 1, tzinfo=EAT))
+
+    @requires_tz_support
+    def test_filter_unbound_datetime_with_naive_date(self):
+        dt = datetime.date(2011, 9, 1)
+        msg = "DateTimeField (unbound) received a naive datetime"
+        with self.assertWarnsMessage(RuntimeWarning, msg):
+            Event.objects.annotate(unbound_datetime=Now()).filter(unbound_datetime=dt)
 
     @requires_tz_support
     def test_naive_datetime_with_microsecond(self):
@@ -610,7 +618,7 @@ class NewDatabaseTests(TestCase):
     @skipIfDBFeature("supports_timezones")
     def test_cursor_execute_accepts_naive_datetime(self):
         dt = datetime.datetime(2011, 9, 1, 13, 20, 30, tzinfo=EAT)
-        utc_naive_dt = timezone.make_naive(dt, datetime.timezone.utc)
+        utc_naive_dt = timezone.make_naive(dt, UTC)
         with connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO timezones_event (dt) VALUES (%s)", [utc_naive_dt]
@@ -629,7 +637,7 @@ class NewDatabaseTests(TestCase):
     @skipIfDBFeature("supports_timezones")
     def test_cursor_execute_returns_naive_datetime(self):
         dt = datetime.datetime(2011, 9, 1, 13, 20, 30, tzinfo=EAT)
-        utc_naive_dt = timezone.make_naive(dt, datetime.timezone.utc)
+        utc_naive_dt = timezone.make_naive(dt, UTC)
         Event.objects.create(dt=dt)
         with connection.cursor() as cursor:
             cursor.execute(

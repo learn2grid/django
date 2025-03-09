@@ -19,7 +19,6 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
     sql_alter_column_no_default = "MODIFY %(column)s DEFAULT NULL"
     sql_alter_column_no_default_null = sql_alter_column_no_default
 
-    sql_delete_column = "ALTER TABLE %(table)s DROP COLUMN %(column)s"
     sql_create_column_inline_fk = (
         "CONSTRAINT %(name)s REFERENCES %(to_table)s(%(to_column)s)%(deferrable)s"
     )
@@ -198,9 +197,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return self.normalize_name(for_name + "_" + suffix)
 
     def prepare_default(self, value):
-        # Replace % with %% as %-formatting is applied in
-        # FormatStylePlaceholderCursor._fix_for_params().
-        return self.quote_value(value).replace("%", "%%")
+        return self.quote_value(value)
 
     def _field_should_be_indexed(self, model, field):
         create_index = super()._field_should_be_indexed(model, field)
@@ -213,6 +210,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         return create_index
 
     def _is_identity_column(self, table_name, column_name):
+        if not column_name:
+            return False
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
