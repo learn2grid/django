@@ -7,6 +7,7 @@ from django.db import DEFAULT_DB_ALIAS, connection, connections
 from django.db.backends.base.creation import TEST_DATABASE_PREFIX, BaseDatabaseCreation
 from django.test import SimpleTestCase, TransactionTestCase
 from django.test.utils import override_settings
+from django.utils.deprecation import RemovedInDjango70Warning
 
 from ..models import (
     CircularA,
@@ -14,6 +15,7 @@ from ..models import (
     Object,
     ObjectReference,
     ObjectSelfReference,
+    SchoolBus,
     SchoolClass,
 )
 
@@ -78,7 +80,7 @@ class TestDbCreationTests(SimpleTestCase):
         old_database_name = test_connection.settings_dict["NAME"]
         try:
             with mock.patch.object(creation, "_create_test_db"):
-                creation.create_test_db(verbosity=0, autoclobber=True, serialize=False)
+                creation.create_test_db(verbosity=0, autoclobber=True)
             # Migrations don't run.
             mocked_migrate.assert_called()
             args, kwargs = mocked_migrate.call_args
@@ -108,7 +110,7 @@ class TestDbCreationTests(SimpleTestCase):
         old_database_name = test_connection.settings_dict["NAME"]
         try:
             with mock.patch.object(creation, "_create_test_db"):
-                creation.create_test_db(verbosity=0, autoclobber=True, serialize=False)
+                creation.create_test_db(verbosity=0, autoclobber=True)
             # The django_migrations table is not created.
             mocked_ensure_schema.assert_not_called()
             # App is synced.
@@ -132,7 +134,7 @@ class TestDbCreationTests(SimpleTestCase):
         old_database_name = test_connection.settings_dict["NAME"]
         try:
             with mock.patch.object(creation, "_create_test_db"):
-                creation.create_test_db(verbosity=0, autoclobber=True, serialize=False)
+                creation.create_test_db(verbosity=0, autoclobber=True)
             # Migrations run.
             mocked_migrate.assert_called()
             args, kwargs = mocked_migrate.call_args
@@ -162,8 +164,47 @@ class TestDbCreationTests(SimpleTestCase):
         old_database_name = test_connection.settings_dict["NAME"]
         try:
             with mock.patch.object(creation, "_create_test_db"):
-                creation.create_test_db(verbosity=0, autoclobber=True, serialize=False)
+                creation.create_test_db(verbosity=0, autoclobber=True)
             self.assertIs(mark_expected_failures_and_skips.called, False)
+        finally:
+            with mock.patch.object(creation, "_destroy_test_db"):
+                creation.destroy_test_db(old_database_name, verbosity=0)
+
+    @mock.patch("django.db.migrations.executor.MigrationExecutor.migrate")
+    @mock.patch.object(BaseDatabaseCreation, "serialize_db_to_string")
+    def test_serialize_deprecation(self, serialize_db_to_string, *mocked_objects):
+        test_connection = get_connection_copy()
+        creation = test_connection.creation_class(test_connection)
+        if connection.vendor == "oracle":
+            # Don't close connection on Oracle.
+            creation.connection.close = mock.Mock()
+        old_database_name = test_connection.settings_dict["NAME"]
+        msg = (
+            "DatabaseCreation.create_test_db(serialize) is deprecated. Call "
+            "DatabaseCreation.serialize_test_db() once all test databases are set up "
+            "instead if you need fixtures persistence between tests."
+        )
+        try:
+            with (
+                self.assertWarnsMessage(RemovedInDjango70Warning, msg) as ctx,
+                mock.patch.object(creation, "_create_test_db"),
+            ):
+                creation.create_test_db(verbosity=0, serialize=True)
+            self.assertEqual(ctx.filename, __file__)
+            serialize_db_to_string.assert_called_once_with()
+        finally:
+            with mock.patch.object(creation, "_destroy_test_db"):
+                creation.destroy_test_db(old_database_name, verbosity=0)
+        # Now with `serialize` False.
+        serialize_db_to_string.reset_mock()
+        try:
+            with (
+                self.assertWarnsMessage(RemovedInDjango70Warning, msg) as ctx,
+                mock.patch.object(creation, "_create_test_db"),
+            ):
+                creation.create_test_db(verbosity=0, serialize=False)
+            self.assertEqual(ctx.filename, __file__)
+            serialize_db_to_string.assert_not_called()
         finally:
             with mock.patch.object(creation, "_destroy_test_db"):
                 creation.destroy_test_db(old_database_name, verbosity=0)
@@ -249,6 +290,22 @@ class TestDeserializeDbFromString(TransactionTestCase):
             data = connection.creation.serialize_db_to_string()
         self.assertIn('"model": "backends.schoolclass"', data)
         self.assertIn('"year": 1000', data)
+
+    def test_serialize_db_to_string_base_manager_with_prefetch_related(self):
+        sclass = SchoolClass.objects.create(
+            year=2000, last_updated=datetime.datetime.now()
+        )
+        bus = SchoolBus.objects.create(number=1)
+        bus.schoolclasses.add(sclass)
+        with mock.patch("django.db.migrations.loader.MigrationLoader") as loader:
+            # serialize_db_to_string() serializes only migrated apps, so mark
+            # the backends app as migrated.
+            loader_instance = loader.return_value
+            loader_instance.migrated_apps = {"backends"}
+            data = connection.creation.serialize_db_to_string()
+        self.assertIn('"model": "backends.schoolbus"', data)
+        self.assertIn('"model": "backends.schoolclass"', data)
+        self.assertIn(f'"schoolclasses": [{sclass.pk}]', data)
 
 
 class SkipTestClass:

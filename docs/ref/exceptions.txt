@@ -33,6 +33,20 @@ Django core exception classes are defined in ``django.core.exceptions``.
 
     See :meth:`~django.db.models.query.QuerySet.get()`.
 
+``ObjectNotUpdated``
+--------------------
+
+.. versionadded:: 6.0
+
+.. exception:: ObjectNotUpdated
+
+    The base class for :exc:`Model.NotUpdated
+    <django.db.models.Model.NotUpdated>` exceptions. A ``try/except`` for
+    ``ObjectNotUpdated`` will catch
+    :exc:`~django.db.models.Model.NotUpdated` exceptions for all models.
+
+    See :meth:`~django.db.models.Model.save()`.
+
 ``EmptyResultSet``
 ------------------
 
@@ -46,8 +60,6 @@ Django core exception classes are defined in ``django.core.exceptions``.
 -----------------
 
 .. exception:: FullResultSet
-
-.. versionadded:: 4.2
 
     ``FullResultSet`` may be raised during query generation if a query will
     match everything. Most Django projects won't encounter this exception, but
@@ -101,10 +113,6 @@ Django core exception classes are defined in ``django.core.exceptions``.
     it is logged at the ``Error`` level and results in
     a :class:`~django.http.HttpResponseBadRequest`. See the :doc:`logging
     documentation </topics/logging/>` for more information.
-
-.. versionchanged:: 3.2.18
-
-    ``SuspiciousOperation`` is raised when too many files are submitted.
 
 ``PermissionDenied``
 --------------------
